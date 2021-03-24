@@ -37,38 +37,37 @@ for _, day in pref_work_shift.iterrows():
 
 def process() -> typing.DefaultDict[str, typing.Any]:
     result = defaultdict(list)
-    driver_night_shifts = {driver_id: 0 for driver_id in qualified_routes.index}
 
     for day in day_off_booked:
-        route_result = []
-        previous_route = None
+        route_result = {}
         previous_route_drivers = []
         leftover_drivers_per_route = {}
 
         for route in qualified_drivers:
-            temp_route_drivers = []
+            possible_route_drivers = []
 
             for driver in qualified_routes.index:
                 if driver in qualified_drivers[route] and driver not in driver_days_off[day]:
-                    temp_route_drivers.append(driver)
+                    possible_route_drivers.append(driver)
 
-            for r in route_result:
-                previous_route_drivers.extend(r.get(previous_route, []))
+            for _, vals in route_result.items():
+                previous_route_drivers.extend(list(vals.values()))
 
-            for driver in list(temp_route_drivers):
+            for driver in list(possible_route_drivers):
                 if driver in previous_route_drivers:
-                    for temp_route in route_result:
-                        for route_name in qualified_routes:
-                            if driver in temp_route.get(route_name, []) and leftover_drivers_per_route.get(route_name):
-                                temp_route.get(route_name)[0] = leftover_drivers_per_route.get(route_name).pop(0)
+                    for route_name, vals in route_result.items():
+                        if driver in list(vals.values()) and leftover_drivers_per_route.get(route_name):
+                            route_result.get(route_name)[1] = leftover_drivers_per_route.get(route_name).pop(0)
 
-                    if len(temp_route_drivers) > 2:
-                        temp_route_drivers.remove(driver)
+                    if len(possible_route_drivers) > 2:
+                        possible_route_drivers.remove(driver)
                         continue
 
-            route_result.append({route: temp_route_drivers[:2]})
-            leftover_drivers_per_route[route] = temp_route_drivers[2:]
-            previous_route = route
+            route_result[route] = {
+                1: possible_route_drivers[0],
+                2: possible_route_drivers[1]
+                }
+            leftover_drivers_per_route[route] = possible_route_drivers[2:]
 
         result[day] = route_result
     print(result)
@@ -77,16 +76,12 @@ def process() -> typing.DefaultDict[str, typing.Any]:
 
 def write_to_csv():
     data = process()
-    routes = [route for route in qualified_routes]
     cool_list = []
 
     for day, route_data in data.items():
-        for route in route_data:
-            for route_name in routes:
-                drivers = route.get(route_name)
-                if drivers:
-                    for i in range(2):
-                        cool_list.append([drivers[i], day, route_name, i+1])
+        for route_name, route in route_data.items():
+            for i in range(1, 3):
+                cool_list.append([route[i], day, route_name, i])
 
     with open('output.csv', 'w') as f:
         writer = csv.writer(f)
@@ -95,6 +90,3 @@ def write_to_csv():
         writer.writerows(cool_list)
 
 write_to_csv()
-#
-# first = [{day1: [{route1:[1,2]}]}]
-# second = [{day1: [{route1:[1,2]}, {route2:[2,1]}]} ]
