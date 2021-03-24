@@ -43,18 +43,21 @@ def process() -> typing.DefaultDict[str, typing.Any]:
         previous_route_drivers = []
         leftover_drivers_per_route = {}
 
-        for route in qualified_drivers:
+        for route, _ in qualified_drivers.items():
             possible_route_drivers = []
 
+            # Check that driver is qualified to drive route, and has not booked the day off.
             for driver in qualified_routes.index:
                 if driver in qualified_drivers[route] and driver not in driver_days_off[day]:
                     possible_route_drivers.append(driver)
 
+            # Keep track of riders who have already worked today.
             for _, vals in route_result.items():
                 previous_route_drivers.extend(list(vals.values()))
 
             for driver in list(possible_route_drivers):
                 if driver in previous_route_drivers:
+                    # Replace driver if they have already worked today.
                     for route_name, vals in route_result.items():
                         if driver in list(vals.values()) and leftover_drivers_per_route.get(route_name):
                             route_result.get(route_name)[1] = leftover_drivers_per_route.get(route_name).pop(0)
