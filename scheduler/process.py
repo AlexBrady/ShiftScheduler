@@ -1,6 +1,7 @@
 """"""
 
-
+import csv
+import typing
 import pandas as pd
 from collections import defaultdict
 import dask.dataframe as dd
@@ -34,17 +35,17 @@ for _, day in pref_work_shift.iterrows():
             driver_shifts[day.name].append((i+1, shift))
 
 
-def process():
+def process() -> typing.DefaultDict[str, typing.Any]:
     result = defaultdict(list)
+    driver_night_shifts = {driver_id: 0 for driver_id in qualified_routes.index}
 
     for day in day_off_booked:
-        print(f'Day: {day}')
         route_result = []
         previous_route = None
         previous_route_drivers = []
+        leftover_drivers_per_route = {}
 
         for route in qualified_drivers:
-            print(f'Route: {route}')
             temp_route_drivers = []
 
             for driver in qualified_routes.index:
@@ -53,23 +54,47 @@ def process():
 
             for r in route_result:
                 previous_route_drivers.extend(r.get(previous_route, []))
-            print(f'Potential Drivers: {temp_route_drivers}')
+
             for driver in list(temp_route_drivers):
+                if driver in previous_route_drivers:
+                    for temp_route in route_result:
+                        for route_name in qualified_routes:
+                            if driver in temp_route.get(route_name, []) and leftover_drivers_per_route.get(route_name):
+                                temp_route.get(route_name)[0] = leftover_drivers_per_route.get(route_name).pop(0)
 
-                if driver in previous_route_drivers and len(temp_route_drivers) > 2:
-                    temp_route_drivers.remove(driver)
-                    continue
-                    
-
+                    if len(temp_route_drivers) > 2:
+                        temp_route_drivers.remove(driver)
+                        continue
 
             route_result.append({route: temp_route_drivers[:2]})
+            leftover_drivers_per_route[route] = temp_route_drivers[2:]
             previous_route = route
 
         result[day] = route_result
-
     print(result)
-process()
+    return result
 
+
+def write_to_csv():
+    data = process()
+    routes = [route for route in qualified_routes]
+    cool_list = []
+
+    for day, route_data in data.items():
+        for route in route_data:
+            for route_name in routes:
+                drivers = route.get(route_name)
+                if drivers:
+                    for i in range(2):
+                        cool_list.append([drivers[i], day, route_name, i+1])
+
+    with open('output.csv', 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Driver ID', 'Day', 'Route ID', 'Shift ID'])
+
+        writer.writerows(cool_list)
+
+write_to_csv()
 #
 # first = [{day1: [{route1:[1,2]}]}]
 # second = [{day1: [{route1:[1,2]}, {route2:[2,1]}]} ]
