@@ -1,6 +1,7 @@
 """"""
 
 import csv
+import random
 import typing
 import pandas as pd
 from collections import defaultdict
@@ -37,6 +38,7 @@ for _, day in pref_work_shift.iterrows():
 
 def process() -> typing.DefaultDict[str, typing.Any]:
     result = defaultdict(list)
+    driver_night_shifts = {driver: 0 for driver in qualified_routes.index}
 
     for day in day_off_booked:
         route_result = {}
@@ -59,22 +61,94 @@ def process() -> typing.DefaultDict[str, typing.Any]:
                 if driver in previous_route_drivers:
                     # Replace driver if they have already worked today.
                     for route_name, vals in route_result.items():
-                        if driver in list(vals.values()) and leftover_drivers_per_route.get(route_name):
-                            route_result.get(route_name)[1] = leftover_drivers_per_route.get(route_name).pop(0)
+                        if driver in list(vals.values()):
+                            leftover_drivers = leftover_drivers_per_route.get(route_name)
+                            if leftover_drivers:
+                                # Ensure that we replace the correct driver on the correct shift.
+                                if driver == route_result.get(route_name)[1]:
+                                    route_result.get(route_name)[1] = leftover_drivers.pop(random.randrange(len(leftover_drivers)))
+                                else:
+                                    night_drivers = [driver for driver in leftover_drivers if driver_night_shifts[driver] < 5]
+                                    new_driver = night_drivers.pop(random.randrange(len(night_drivers)))
+                                    route_result.get(route_name)[2] = new_driver
+                                    driver_night_shifts[new_driver] += 1
+                                    driver_night_shifts[driver] -= 1
 
                     if len(possible_route_drivers) > 2:
                         possible_route_drivers.remove(driver)
                         continue
 
+            day_shift = possible_route_drivers.pop(random.randrange(len(possible_route_drivers)))
+            night_shift = possible_route_drivers.pop(random.randrange(len(possible_route_drivers)))
+
             route_result[route] = {
-                1: possible_route_drivers[0],
-                2: possible_route_drivers[1]
+                1: day_shift,
+                2: night_shift
                 }
-            leftover_drivers_per_route[route] = possible_route_drivers[2:]
+
+            leftover_drivers_per_route[route] = possible_route_drivers
+            driver_night_shifts[night_shift] += 1
 
         result[day] = route_result
-    print(result)
     return result
+
+# def process() -> typing.DefaultDict[str, typing.Any]:
+#     result = defaultdict(list)
+#     drivers_per_route = {}
+#     driver_night_shifts = {driver: 0 for driver in qualified_routes.index}
+#
+#     for day in day_off_booked:
+#         route_result = {}
+#         previous_route_drivers = []
+#         leftover_drivers_per_route = {}
+#
+#         for route, _ in qualified_drivers.items():
+#             possible_route_drivers = []
+#
+#             # Check that driver is qualified to drive route, and has not booked the day off.
+#             for driver in qualified_routes.index:
+#                 if driver in qualified_drivers[route] and driver not in driver_days_off[day]:
+#                     possible_route_drivers.append(driver)
+#
+#             route_result[route] = possible_route_drivers
+#
+#         drivers_per_route[day] = route_result
+#
+#     days = defaultdict(list)
+#     for day, routes in drivers_per_route.items():
+#         route_per_day = {}
+#         drivers_driven = []
+#         for route_name, drivers in routes.items():
+#             best_drivers = []
+#             if len(drivers) == 2:
+#                 if driver_night_shifts[drivers[1]] > 4:
+#                     drivers[0], drivers[1] = drivers[1], drivers[0]
+#                 route_per_day[route_name] = {1: drivers[0], 2: drivers[1]}
+#                 driver_night_shifts[drivers[1]] += 1
+#                 drivers_driven.extend(drivers[:2])
+#
+#             else:
+#                 shift = {}
+#                 for index, driver in enumerate(list(drivers)):
+#                     shift[index+1] = driver
+#                     if index + 1 == 2:
+#                         driver_night_shifts[driver] += 1
+#
+#                     if len(shift.values()) == 2:
+#                         break
+#
+#                 drivers_driven.extend(shift.values())
+#
+#                 route_per_day[route_name] = shift
+#
+#
+#         days[day] = route_per_day
+#
+#     print(days)
+#     print(driver_night_shifts)
+#     print(driver_night_shifts.values())
+#     print(sum(driver_night_shifts.values()))
+#     return result
 
 
 def write_to_csv():
