@@ -10,8 +10,10 @@ from scheduler.validate import Schemas
 
 
 class Scheduler:
+    """Create a schedule for delivery drivers over a two week period."""
 
     def __init__(self):
+        """Initialize."""
         self.schemas = Schemas()
         self.qualified_drivers = self._get_qualified_drivers_per_route()
         self.driver_days_off = self._get_days_off_per_driver()
@@ -45,7 +47,7 @@ class Scheduler:
                 night_shift = random.choice(self._get_possible_night_shift_drivers(possible_route_drivers, day))
                 possible_route_drivers.remove(night_shift)
 
-                day_shift = random.choice(self._get_possible_day_shift_drivers(possible_route_drivers))
+                day_shift = random.choice(self._get_possible_day_shift_drivers(possible_route_drivers, day))
 
                 drivers_for_route[route_name] = {
                     1: day_shift,
@@ -60,19 +62,20 @@ class Scheduler:
         return schedule
 
     def write_to_csv(self):
-        data = self.generate_schedule()
-        cool_list = []
+        """Write the generated schedule data to a csv."""
+        schedule = self.generate_schedule()
+        csv_rows = []
 
-        for day, route_data in data.items():
+        for day, route_data in schedule.items():
             for route_name, route in route_data.items():
-                for i in range(1, 3):
-                    cool_list.append([route[i], day, route_name, i])
+                for i in range(1, len(route_data)):
+                    csv_rows.append([route[i], day, route_name, i])
 
-        with open('output.csv', 'w') as f:
+        with open('../driver_schedule.csv', 'w') as f:
             writer = csv.writer(f)
             writer.writerow(['Driver ID', 'Day', 'Route ID', 'Shift ID'])
 
-            writer.writerows(cool_list)
+            writer.writerows(csv_rows)
 
     def _get_possible_night_shift_drivers(
             self,
@@ -104,14 +107,29 @@ class Scheduler:
 
         return night_drivers
 
-    def _get_possible_day_shift_drivers(self, possible_route_drivers: typing.List[int]) -> typing.List[int]:
-        day_drivers = {
+    def _get_possible_day_shift_drivers(
+            self,
+            possible_route_drivers: typing.List[int],
+            day: str,
+            ) -> typing.List[int]:
+        """
+        Get a list of the drivers that can drive the day shift
+        :param possible_route_drivers:
+        :return:
+        """
+        available_day_drivers = {
             driver: self.driver_night_shift_counter[driver]
             for driver in possible_route_drivers
             }
 
-        max_value = max(day_drivers.values())
-        day_drivers = [k for k in day_drivers if day_drivers[k] == max_value]
+        most_used_night_shift_drivers = [
+            driver for driver in available_day_drivers
+            if available_day_drivers[driver] == max(available_day_drivers.values())
+            ]
+
+        day_drivers = [d for d in most_used_night_shift_drivers if d not in self.driver_days_off_preference[day]]
+        if not day_drivers:
+            day_drivers = most_used_night_shift_drivers
 
         return day_drivers
 
@@ -164,7 +182,7 @@ class Scheduler:
         return driver_days_off_preference
 
     def _get_driver_shift_preference(self) -> typing.Dict[int, typing.List[typing.Tuple[int, int]]]:
-        """Get the preferred shifts that each driver would like."""
+        """Get the preferred shifts that each driver would like for each day."""
         driver_shifts = defaultdict(list)
         for _, day in self.schemas.pref_work_shift.iterrows():
             for i, shift in enumerate(day.values):

@@ -31,6 +31,7 @@ class Schemas:
         ])
 
     def __init__(self):
+        """Initialize."""
         self.qualified_routes = qualified_routes
         self.day_off_booked = day_off_booked
         self.pref_day_off = pref_day_off
