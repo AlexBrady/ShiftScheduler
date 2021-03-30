@@ -9,7 +9,7 @@ from collections import defaultdict
 from scheduler.validate import Schemas
 
 
-class Process:
+class Scheduler:
 
     def __init__(self):
         self.schemas = Schemas()
@@ -17,81 +17,50 @@ class Process:
         self.driver_days_off = self._get_days_off_per_driver()
         self.driver_days_off_preference = self._get_driver_days_off_preference()
         self.driver_shifts = self._get_driver_shift_preference()
+        self.driver_night_shift_counter = {driver: 0 for driver in self.schemas.qualified_routes.index}
 
-    def process(self) -> typing.Dict[str, typing.Dict[str, typing.Dict[int, int]]]:
+    def generate_schedule(self) -> typing.Dict[str, typing.Dict[str, typing.Dict[int, int]]]:
         """Generate the schedule."""
-        drivers_per_route = self._get_available_drivers()
+        drivers_per_route = self._get_available_drivers_per_route()
+        schedule = {day: {} for day in self.driver_days_off.keys()}
 
-        driver_night_shifts = {driver: 0 for driver in self.schemas.qualified_routes.index}
-        result = {day: {} for day in self.driver_days_off.keys()}
         for day, routes in drivers_per_route.items():
-            print(f'Day: {day}')
-            print(f'night counts: {driver_night_shifts}')
-            route_result = {}
+            drivers_for_route = {}
             previous_route_drivers = set()
 
             for route_name, route_drivers in routes.items():
-
-                print(f'Route: {route_name}')
                 possible_route_drivers = []
 
                 # Keep track of riders who have already worked today.
-                for _, vals in route_result.items():
-                    for v in vals.values():
-                        previous_route_drivers.add(v)
-
-                print(f'Previous drivers: {previous_route_drivers}')
+                for drivers in drivers_for_route.values():
+                    for driver in drivers.values():
+                        previous_route_drivers.add(driver)
 
                 # Check that the driver has not already worked today.
                 for driver in route_drivers:
                     if driver not in previous_route_drivers:
                         possible_route_drivers.append(driver)
 
-                print(f'Potential drivers: {possible_route_drivers}')
-
-                night_drivers = {}
-                for driver in possible_route_drivers:
-                    if driver_night_shifts[driver] < 4:
-                        night_drivers[driver] = driver_night_shifts[driver]
-
-                if not night_drivers:
-                    print(result)
-
-                min_value = min(night_drivers.values())
-                night_drivers = [k for k in night_drivers if night_drivers[k] == min_value]
-                pref = [d for d in night_drivers if d not in self.driver_days_off_preference[day]]
-                if not pref:
-                    pref = night_drivers
-
-                print(f'MIN night drivers: {pref}')
-
-                # pick driver with less
-                night_shift = random.choice(pref)
-
+                # Pick the driver for the night shift and remove from list of possible day shift drivers.
+                night_shift = random.choice(self._get_possible_night_shift_drivers(possible_route_drivers, day))
                 possible_route_drivers.remove(night_shift)
 
-                day_drivers = {driver: driver_night_shifts[driver] for driver in possible_route_drivers}
+                day_shift = random.choice(self._get_possible_day_shift_drivers(possible_route_drivers))
 
-                max_value = max(day_drivers.values())
-                day_drivers = [k for k in day_drivers if day_drivers[k] == max_value]
-
-                print(f'MAX day drivers: {day_drivers}')
-
-                day_shift = random.choice(day_drivers)
-
-                route_result[route_name] = {
+                drivers_for_route[route_name] = {
                     1: day_shift,
                     2: night_shift
                     }
-                print(f'Chosen Drivers: {day_shift}, {night_shift}')
 
-                driver_night_shifts[night_shift] += 1
+                # Update counter for night shifts.
+                self.driver_night_shift_counter[night_shift] += 1
 
-            result[day] = route_result
-        return result
+            schedule[day] = drivers_for_route
+
+        return schedule
 
     def write_to_csv(self):
-        data = self.process()
+        data = self.generate_schedule()
         cool_list = []
 
         for day, route_data in data.items():
@@ -105,15 +74,53 @@ class Process:
 
             writer.writerows(cool_list)
 
-    def _get_available_drivers(self) -> typing.Dict[str, typing.Dict[str, typing.List[int]]]:
+    def _get_possible_night_shift_drivers(
+            self,
+            possible_route_drivers: typing.List[int],
+            day: str,
+            ) -> typing.List[int]:
         """
-        Get the list of drivers qualified to drive, who have not booked the day off per route per day.
+        Get the list of possible drivers for a night shift for a route.
+
+        No driver can have more than 4 night shifts for the schedule.
+        We want to use the drivers with the lowest numbers of night shifts, and take into account the drivers'
+        preferred days off.
+        :param possible_route_drivers: The list of drivers available for the given route.
         :return:
         """
-        drivers_per_route = {}
+        available_night_drivers = {
+            driver: self.driver_night_shift_counter[driver]
+            for driver in possible_route_drivers if self.driver_night_shift_counter[driver] < 4
+            }
+
+        least_used_night_drivers = [
+            driver for driver in available_night_drivers
+            if available_night_drivers[driver] == min(available_night_drivers.values())
+            ]
+
+        night_drivers = [d for d in least_used_night_drivers if d not in self.driver_days_off_preference[day]]
+        if not night_drivers:
+            night_drivers = least_used_night_drivers
+
+        return night_drivers
+
+    def _get_possible_day_shift_drivers(self, possible_route_drivers: typing.List[int]) -> typing.List[int]:
+        day_drivers = {
+            driver: self.driver_night_shift_counter[driver]
+            for driver in possible_route_drivers
+            }
+
+        max_value = max(day_drivers.values())
+        day_drivers = [k for k in day_drivers if day_drivers[k] == max_value]
+
+        return day_drivers
+
+    def _get_available_drivers_per_route(self) -> typing.Dict[str, typing.Dict[str, typing.List[int]]]:
+        """Get the list of drivers qualified to drive, who have not booked the day off per route per day."""
+        drivers_per_day = {}
 
         for day in self.schemas.day_off_booked:
-            route_result = {}
+            drivers_for_route = {}
 
             for route_name, drivers in self.qualified_drivers.items():
                 possible_route_drivers = []
@@ -123,11 +130,12 @@ class Process:
                     if driver not in self.driver_days_off[day]:
                         possible_route_drivers.append(driver)
 
-                route_result[route_name] = possible_route_drivers
+                drivers_for_route[route_name] = possible_route_drivers
+                
+            # We want to deal with the least amount of available drivers first
+            drivers_per_day[day] = dict(sorted(drivers_for_route.items(), key=lambda r: len(r[1]), reverse=False))
 
-            drivers_per_route[day] = dict(sorted(route_result.items(), key=lambda r: len(r[1]), reverse=False))
-
-        return drivers_per_route
+        return drivers_per_day
 
     def _get_qualified_drivers_per_route(self) -> typing.Dict[str, typing.List[int]]:
         """Get drivers that are qualified for each route."""
@@ -146,7 +154,7 @@ class Process:
 
         return driver_days_off
 
-    def _get_driver_days_off_preference(self) -> typing.Dict[int, typing.List[int]]:
+    def _get_driver_days_off_preference(self) -> typing.Dict[str, typing.List[int]]:
         """Get the preferred days off that each driver would like."""
         driver_days_off_preference = {}
         for day in self.schemas.pref_day_off:
@@ -167,5 +175,4 @@ class Process:
         return driver_shifts
 
 
-process = Process()
-process.write_to_csv()
+Scheduler().write_to_csv()
