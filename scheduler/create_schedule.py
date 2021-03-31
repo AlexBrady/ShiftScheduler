@@ -71,7 +71,7 @@ class Scheduler:
                 for i in range(1, len(route_data)):
                     csv_rows.append([route[i], day, route_name, i])
 
-        with open('../driver_schedule.csv', 'w') as f:
+        with open('driver_schedule.csv', 'w') as f:
             writer = csv.writer(f)
             writer.writerow(['Driver ID', 'Day', 'Route ID', 'Shift ID'])
 
