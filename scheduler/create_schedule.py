@@ -45,8 +45,9 @@ class Scheduler:
 
                 # Pick the driver for the night shift and remove from list of possible day shift drivers.
                 night_shift = random.choice(self._get_possible_night_shift_drivers(possible_route_drivers, day))
-                possible_route_drivers.remove(night_shift)
 
+                # Pick the day driver from the remaining available drivers.
+                possible_route_drivers.remove(night_shift)
                 day_shift = random.choice(self._get_possible_day_shift_drivers(possible_route_drivers, day))
 
                 drivers_for_route[route_name] = {
@@ -57,6 +58,7 @@ class Scheduler:
                 # Update counter for night shifts.
                 self.driver_night_shift_counter[night_shift] += 1
 
+            # Add the assigned shifts for the day to the final schedule.
             schedule[day] = drivers_for_route
 
         return schedule
@@ -89,7 +91,7 @@ class Scheduler:
         We want to use the drivers with the lowest numbers of night shifts, and take into account the drivers'
         preferred days off.
         :param possible_route_drivers: The list of drivers available for the given route.
-        :return:
+        :return: A list of drivers able to work the night shift on a given day and route.
         """
         available_night_drivers = {
             driver: self.driver_night_shift_counter[driver]
@@ -115,7 +117,7 @@ class Scheduler:
         """
         Get a list of the drivers that can drive the day shift
         :param possible_route_drivers:
-        :return:
+        :return: A list of drivers able to work the day shift on a given day and route.
         """
         available_day_drivers = {
             driver: self.driver_night_shift_counter[driver]
@@ -149,7 +151,7 @@ class Scheduler:
                         possible_route_drivers.append(driver)
 
                 drivers_for_route[route_name] = possible_route_drivers
-                
+
             # We want to deal with the least amount of available drivers first
             drivers_per_day[day] = dict(sorted(drivers_for_route.items(), key=lambda r: len(r[1]), reverse=False))
 
